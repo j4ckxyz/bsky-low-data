@@ -227,8 +227,12 @@ async function startOAuth(handle, redirectUri) {
   const codeVerifier = randomString(64);
   const codeChallenge = b64.urlencode(await sha256(codeVerifier));
 
-  // Public client: client_id is our site origin (recommended), or our redirect URI
-  const clientId = new URL(redirectUri, location.href).origin;
+  // For Bluesky OAuth, public client uses site origin as client_id. If running on Pages, prefer the Pages origin explicitly.
+  let clientIdOrigin = new URL(redirectUri).origin;
+  if (clientIdOrigin.endsWith('pages.dev')) {
+    clientIdOrigin = 'https://bsky-low-data.pages.dev';
+  }
+  const clientId = clientIdOrigin;
 
   // Push the authorization request (PAR)
   const parParams = new URLSearchParams({

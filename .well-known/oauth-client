@@ -1,0 +1,11 @@
+{
+  "client_id": "https://bsky-low-data.pages.dev",
+  "client_name": "Bluesky Low Data",
+  "application_type": "web",
+  "redirect_uris": [
+    "https://bsky-low-data.pages.dev/oauth-callback.html"
+  ],
+  "grant_types": ["authorization_code"],
+  "response_types": ["code"],
+  "token_endpoint_auth_method": "none"
+}
