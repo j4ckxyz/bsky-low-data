@@ -124,6 +124,7 @@ const session = {
       redirectUri: null,
       metadata: null,
       dpopKeyId: null,
+      nonce: null,
     }
   },
   load() {
@@ -291,30 +292,43 @@ async function handleOAuthCallback() {
   // Compute DPoP JKT thumbprint
   const { jkt } = await getDpopThumbprint();
 
-  const body = new URLSearchParams({
+  const paramsBase = {
     grant_type: 'authorization_code',
     client_id: oauth.clientId,
     redirect_uri: oauth.redirectUri,
     code,
     code_verifier: oauth.codeVerifier,
     dpop_jkt: jkt,
-  });
+  };
 
-  // DPoP proof for token endpoint
-  const proof = await makeDpopProof(tokenUrl, 'POST');
-  const res = await fetch(tokenUrl, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/x-www-form-urlencoded',
-      'DPoP': proof
-    },
-    body: body.toString()
-  });
-  if (!res.ok) {
-    const txt = await res.text().catch(() => '');
-    throw new Error(`Token exchange failed: ${res.status} ${txt}`);
+  // Attempt token request; if server demands DPoP nonce, retry with nonce
+  async function requestToken(withNonce) {
+    const body = new URLSearchParams(paramsBase);
+    const proof = await makeDpopProof(tokenUrl, 'POST', withNonce ? session.state.oauth.nonce : undefined);
+    const res = await fetch(tokenUrl, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', 'DPoP': proof },
+      body: body.toString()
+    });
+    return res;
   }
-  const tok = await res.json(); // { access_token, refresh_token?, token_type: 'DPoP' }
+
+  let res = await requestToken(false);
+  if (!res.ok) {
+    // Check for nonce requirement
+    const nonceHeader = res.headers.get('DPoP-Nonce') || res.headers.get('dpop-nonce');
+    const txt = await res.text().catch(() => '');
+    if (res.status === 400 && /use_dpop_nonce/.test(txt) && nonceHeader) {
+      session.state.oauth.nonce = nonceHeader;
+      session.save();
+      res = await requestToken(true);
+    }
+  }
+  if (!res.ok) {
+    const txt2 = await res.text().catch(() => '');
+    throw new Error(`Token exchange failed: ${res.status} ${txt2}`);
+  }
+  const tok = await res.json();
 
   session.state = {
     ...session.state,
