@@ -25,31 +25,17 @@
     </header>
 
     <main class="container">
+      <section id="info-banner" class="card" hidden>
+        <div class="row between">
+          <div>
+            <strong>Heads up</strong>
+            <p class="small muted">OAuth posting isn’t available yet on many PDSs. Initial release uses App Password login. OAuth will be added when broadly supported.</p>
+          </div>
+          <button id="btn-banner-dismiss" class="secondary" style="width:auto">Dismiss</button>
+        </div>
+      </section>
       <section id="login-section" class="card">
         <h2>Log in</h2>
-        <div class="tabs">
-          <button class="tab" data-tab="oauth">OAuth</button>
-          <button class="tab active" data-tab="apppw">App password</button>
-        </div>
-
-        <div id="tab-oauth" class="tab-panel">
-          <form id="form-oauth" class="grid">
-            <label class="full">
-              <span>Handle (@username)</span>
-              <input id="oauth-handle" type="text" inputmode="email" placeholder="@you.bsky.social" autocomplete="username" required />
-            </label>
-            <label class="full">
-              <span>Redirect URI</span>
-              <input id="oauth-redirect" type="url" value="" required />
-              <small>Defaults to this site's <code>oauth-callback.html</code></small>
-            </label>
-            <div class="row">
-              <button id="btn-oauth-start" type="submit">Continue with Bluesky</button>
-            </div>
-            <p class="muted small">Standards-based login using PKCE, PAR and DPoP. Experimental in browsers.</p>
-          </form>
-        </div>
-
         <div id="tab-apppw" class="tab-panel active">
           <form id="form-apppw" class="grid">
             <label class="full">
@@ -72,7 +58,13 @@
         <div class="session-row">
           <div>
             <div class="muted small">Signed in as</div>
-            <div id="session-identity" class="identity">—</div>
+            <div class="row" style="gap:8px">
+              <img id="avatar" class="avatar" alt="" src="" hidden />
+              <div>
+                <div id="session-identity" class="identity">—</div>
+                <div id="session-did" class="small muted">—</div>
+              </div>
+            </div>
           </div>
           <div class="muted small" id="pds-host">—</div>
         </div>
@@ -93,13 +85,10 @@
           <fieldset class="full">
             <legend>Images (up to 4)</legend>
             <input id="image-input" type="file" accept="image/*" multiple />
-            <div class="row small muted">
-              <label><input id="compress-toggle" type="checkbox" checked /> Compress before upload</label>
-              <label>Max side <input id="max-dim" type="number" value="1600" min="512" max="4096" step="64" /> px</label>
-              <label>Quality <input id="quality" type="range" min="0.5" max="0.95" step="0.05" value="0.85" /></label>
-            </div>
             <div id="image-list" class="image-list"></div>
           </fieldset>
+
+          <div id="link-preview" class="card small" hidden></div>
 
           <details class="full">
             <summary>Reply (thread) options</summary>

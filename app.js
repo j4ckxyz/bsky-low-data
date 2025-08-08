@@ -486,6 +486,11 @@ function buildFacets(text) {
   return facets.length ? facets : undefined;
 }
 
+function firstUrl(text) {
+  const m = text.match(urlRegex);
+  return m ? m[0] : null;
+}
+
 // ------------------------
 // Image processing
 // ------------------------
@@ -558,12 +563,35 @@ async function createPost({ text, images, alts, reply }) {
     for (let i = 0; i < images.length; i++) {
       const file = images[i];
       const uploaded = await uploadBlob(file);
+      // Attempt to compute aspect ratio for Bluesky app to avoid letterboxing
+      let aspectRatioDims;
+      try {
+        const bmp = await createImageBitmap(file);
+        if (bmp && bmp.width && bmp.height) {
+          aspectRatioDims = { width: bmp.width, height: bmp.height };
+        }
+      } catch {}
       imgs.push({
         image: uploaded,
         alt: alts?.[i] || ''
       });
+      if (aspectRatioDims && imgs[imgs.length-1]) imgs[imgs.length-1].aspectRatio = aspectRatioDims;
     }
     record.embed = { $type: 'app.bsky.embed.images', images: imgs };
+  }
+  else {
+    // If no images, consider external link card for first URL
+    const url = firstUrl(text);
+    if (url) {
+      record.embed = { $type: 'app.bsky.embed.external', external: { uri: url, title: url, description: '' } };
+      try {
+        // Try to fetch page title for preview (best-effort, CORS may block)
+        const resp = await fetch(url, { method: 'GET', mode: 'cors' });
+        const html = await resp.text();
+        const title = (html.match(/<title>([^<]+)<\/title>/i) || [])[1];
+        if (title) record.embed.external.title = title.trim();
+      } catch {}
+    }
   }
 
   if (reply?.parentUri && reply?.parentCid) {
@@ -645,7 +673,12 @@ function updateSessionUI() {
   setHidden($('#btn-logout'), !loggedIn);
   if (loggedIn) {
     $('#session-identity').textContent = `${s.handle || s.did}`;
+    $('#session-did').textContent = s.did || '';
     try { $('#pds-host').textContent = new URL(s.pds).host; } catch { $('#pds-host').textContent = s.pds || '—'; }
+    // Load avatar
+    try {
+      const profile = await apiFetch('app.bsky.actor.getProfile?'.replace('?', ''), { method: 'GET', headers: {}, body: undefined });
+    } catch {}
     scheduleTokenRefresh();
   }
 }
@@ -697,8 +730,15 @@ function collectAlts(max) {
 }
 
 function initUI() {
-  initTabs();
   initInstallPrompt();
+
+  // First-run banner
+  const bannerSeen = storage.get('banner.seen', false);
+  if (!bannerSeen) setHidden(document.getElementById('info-banner'), false);
+  document.getElementById('btn-banner-dismiss').addEventListener('click', ()=>{
+    storage.set('banner.seen', true);
+    setHidden(document.getElementById('info-banner'), true);
+  });
 
   // Default redirect URI
   const defaultRedirect = coerceLocalRedirect(computeDefaultRedirect());
@@ -720,27 +760,7 @@ function initUI() {
     updateSessionUI();
   });
 
-  // OAuth form
-  $('#form-oauth').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const handle = $('#oauth-handle').value.trim();
-    let redirect = $('#oauth-redirect').value.trim();
-    // Replace localhost with 127.0.0.1 to satisfy RFC 8252 loopback rule
-    const coerced = coerceLocalRedirect(redirect);
-    if (coerced !== redirect) {
-      redirect = coerced;
-      $('#oauth-redirect').value = redirect;
-    }
-    if (!handle || !redirect) return;
-    try {
-      $('#btn-oauth-start').disabled = true;
-      await startOAuth(handle, redirect);
-    } catch (err) {
-      alert(err.message || 'OAuth failed');
-    } finally {
-      $('#btn-oauth-start').disabled = false;
-    }
-  });
+  // Remove OAuth UI (kept code for future work)
 
   // App password form
   $('#form-apppw').addEventListener('submit', async (e) => {
@@ -765,9 +785,6 @@ function initUI() {
     // Paragraph-chunk threads: split by empty lines if user wrote multiple paragraphs beyond byte limit
     const paragraphs = text.split(/\n{2,}/).map(s => s.trim()).filter(Boolean);
     const files = Array.from($('#image-input').files || []).slice(0, 4);
-    const compress = $('#compress-toggle').checked;
-    const maxDim = parseInt($('#max-dim').value || '1600', 10);
-    const quality = parseFloat($('#quality').value || '0.85');
 
     const reply = {
       parentUri: $('#reply-parent-uri').value.trim() || null,
@@ -782,14 +799,7 @@ function initUI() {
 
     try {
       $('#btn-post').disabled = true;
-      let processedFiles = files;
-      if (compress && files.length) {
-        processedFiles = [];
-        for (const f of files) {
-          try { processedFiles.push(await compressImage(f, { maxDim, quality })); }
-          catch { processedFiles.push(f); }
-        }
-      }
+      const processedFiles = files; // no compression controls in minimal mode
       const alts = collectAlts(processedFiles.length);
       let res; let lastUri;
       const chunks = paragraphs.length ? paragraphs : [text];
