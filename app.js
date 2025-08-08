@@ -147,7 +147,8 @@ async function apiFetch(path, { method = 'GET', headers = {}, body } = {}) {
   if (accessJwt) {
     // For app password we use Bearer; for OAuth we likely need DPoP Authorization
     if (authType === 'oauth') {
-      h.set('Authorization', `DPoP ${accessJwt}`);
+      const tokenType = 'DPoP';
+      h.set('Authorization', `${tokenType} ${accessJwt}`);
       const proof = await makeDpopProof(url, method);
       h.set('DPoP', proof);
     } else {
@@ -527,6 +528,36 @@ async function createPost({ text, images, alts, reply }) {
   return res; // { uri, cid, ... }
 }
 
+// Refresh tokens periodically (2h default); try when requests fail with 401
+async function maybeRefreshTokens() {
+  const { authType, refreshJwt, pds, oauth } = session.state;
+  if (authType !== 'oauth' || !refreshJwt) return false;
+  try {
+    const tokenUrl = oauth?.metadata?.token_endpoint;
+    if (!tokenUrl) return false;
+    // DPoP-bound refresh
+    const { jkt } = await getDpopThumbprint();
+    const body = new URLSearchParams({
+      grant_type: 'refresh_token',
+      client_id: oauth.clientId,
+      refresh_token: refreshJwt,
+      dpop_jkt: jkt
+    });
+    const proof = await makeDpopProof(tokenUrl, 'POST');
+    const res = await fetch(tokenUrl, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded', 'DPoP': proof },
+      body: body.toString()
+    });
+    if (!res.ok) return false;
+    const tok = await res.json();
+    session.state.accessJwt = tok.access_token || session.state.accessJwt;
+    session.state.refreshJwt = tok.refresh_token || session.state.refreshJwt;
+    session.save();
+    return true;
+  } catch { return false; }
+}
+
 // ------------------------
 // UI wiring
 // ------------------------
@@ -555,6 +586,7 @@ function updateSessionUI() {
   if (loggedIn) {
     $('#session-identity').textContent = `${s.handle || s.did}`;
     try { $('#pds-host').textContent = new URL(s.pds).host; } catch { $('#pds-host').textContent = s.pds || '—'; }
+    scheduleTokenRefresh();
   }
 }
 
@@ -669,7 +701,9 @@ function initUI() {
   // Compose form
   $('#form-compose').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const text = $('#post-text').value.trim();
+    let text = $('#post-text').value.trim();
+    // Paragraph-chunk threads: split by empty lines if user wrote multiple paragraphs beyond byte limit
+    const paragraphs = text.split(/\n{2,}/).map(s => s.trim()).filter(Boolean);
     const files = Array.from($('#image-input').files || []).slice(0, 4);
     const compress = $('#compress-toggle').checked;
     const maxDim = parseInt($('#max-dim').value || '1600', 10);
@@ -697,7 +731,33 @@ function initUI() {
         }
       }
       const alts = collectAlts(processedFiles.length);
-      const res = await createPost({ text, images: processedFiles, alts, reply });
+      let res; let lastUri;
+      const chunks = paragraphs.length ? paragraphs : [text];
+      for (let idx = 0; idx < chunks.length; idx++) {
+        const part = chunks[idx];
+        const partBytes = textEncoder.encode(part).length;
+        if (partBytes > 300) { throw new Error('A paragraph exceeds 300 bytes. Please shorten.'); }
+        const replyCtx = idx === 0 ? reply : { parentUri: lastUri, parentCid: lastUriCid, rootUri: threadRootUri, rootCid: threadRootCid };
+        try {
+          const out = await createPost({ text: part, images: idx === 0 ? processedFiles : [], alts: idx === 0 ? alts : [], reply: replyCtx });
+          lastUri = out.uri; var lastUriCid = out.cid; var threadRootUri = threadRootUri || out.uri; var threadRootCid = threadRootCid || out.cid;
+          res = out;
+        } catch (err) {
+          // If unauthorized and OAuth, try refresh once then retry
+          if (/401/.test(err.message || '') && session.state.authType === 'oauth') {
+            const refreshed = await maybeRefreshTokens();
+            if (refreshed) {
+              const out = await createPost({ text: part, images: idx === 0 ? processedFiles : [], alts: idx === 0 ? alts : [], reply: replyCtx });
+              lastUri = out.uri; lastUriCid = out.cid; threadRootUri = threadRootUri || out.uri; threadRootCid = threadRootCid || out.cid;
+              res = out;
+            } else { throw err; }
+          } else { throw err; }
+        }
+      }
+      try {
+        // no-op; 'res' is last post in thread
+      } catch {}
+      /* Old single-post path removed */
       $('#post-result').value = `Posted: ${res.uri}`;
       // Reset form
       $('#post-text').value = '';
@@ -725,3 +785,15 @@ function initUI() {
 })();
 
 export { handleOAuthCallback };
+
+// Background refresh scheduler for OAuth sessions
+let refreshTimer;
+function scheduleTokenRefresh() {
+  clearTimeout(refreshTimer);
+  if (session.state.authType !== 'oauth') return;
+  // Refresh slightly before 2h (e.g., 100 minutes)
+  const ms = 100 * 60 * 1000;
+  refreshTimer = setTimeout(async () => {
+    try { await maybeRefreshTokens(); } finally { scheduleTokenRefresh(); }
+  }, ms);
+}
