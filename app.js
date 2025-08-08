@@ -764,10 +764,7 @@ function initUI() {
     setHidden(document.getElementById('info-banner'), true);
   });
 
-  // Default redirect URI
-  const defaultRedirect = coerceLocalRedirect(computeDefaultRedirect());
-  const redirectEl = $('#oauth-redirect');
-  redirectEl.value = defaultRedirect;
+  // No OAuth inputs on initial release
 
   // Byte counter
   $('#post-text').addEventListener('input', countBytesAndUpdate);
