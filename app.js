@@ -46,6 +46,17 @@ function coerceLocalRedirect(urlString) {
   }
 }
 
+function computeDefaultRedirect() {
+  try {
+    // Prefer a clean absolute callback on custom domains like bsky.j4ck.xyz
+    if (location.hostname.endsWith('j4ck.xyz')) {
+      return `https://${location.host}/oauth-callback.html`;
+    }
+  } catch {}
+  // Generic fallback that also works on GitHub Pages subpaths and preview URLs
+  return new URL('oauth-callback.html', location.href).toString();
+}
+
 // ------------------------
 // Storage
 // ------------------------
@@ -576,7 +587,7 @@ function initUI() {
   initInstallPrompt();
 
   // Default redirect URI
-  const defaultRedirect = coerceLocalRedirect(new URL('oauth-callback.html', location.href).toString());
+  const defaultRedirect = coerceLocalRedirect(computeDefaultRedirect());
   const redirectEl = $('#oauth-redirect');
   redirectEl.value = defaultRedirect;
 
