@@ -46,6 +46,17 @@ function coerceLocalRedirect(urlString) {
   }
 }
 
+function parseDpopNonceFromAuthenticate(hval) {
+  if (!hval) return null;
+  // Example: DPoP error="use_dpop_nonce", dpop-nonce="abc.def.ghi"
+  const m = hval.match(/dpop-nonce\s*=\s*"([^"]+)"/i);
+  return m ? m[1] : null;
+}
+
+async function getResponseTextSafe(res) {
+  try { return await res.text(); } catch { return ''; }
+}
+
 function computeDefaultRedirect() {
   try {
     const host = location.hostname;
@@ -314,11 +325,13 @@ async function handleOAuthCallback() {
 
   let res = await requestToken(false);
   if (!res.ok) {
-    // Check for nonce requirement
+    // Check for nonce requirement via header (DPoP-Nonce) or WWW-Authenticate
     const nonceHeader = res.headers.get('DPoP-Nonce') || res.headers.get('dpop-nonce');
-    const txt = await res.text().catch(() => '');
-    if (res.status === 400 && /use_dpop_nonce/.test(txt) && nonceHeader) {
-      session.state.oauth.nonce = nonceHeader;
+    const www = res.headers.get('WWW-Authenticate') || res.headers.get('www-authenticate');
+    const txt = await getResponseTextSafe(res);
+    let nonce = nonceHeader || parseDpopNonceFromAuthenticate(www);
+    if (res.status === 400 && (/use_dpop_nonce/.test(txt) || /use_dpop_nonce/.test(www || '')) && nonce) {
+      session.state.oauth.nonce = nonce;
       session.save();
       res = await requestToken(true);
     }
