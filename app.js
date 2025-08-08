@@ -233,7 +233,7 @@ async function loginWithAppPassword(identifier, password) {
   const res = await fetch(`${ensureTrailing(pds)}xrpc/com.atproto.server.createSession`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ identifier: normalizedId, password })
+    body: JSON.stringify({ identifier: inputId, password })
   });
   if (!res.ok) {
     let msg = `${res.status}`;
@@ -583,14 +583,9 @@ async function createPost({ text, images, alts, reply }) {
     // If no images, consider external link card for first URL
     const url = firstUrl(text);
     if (url) {
-      record.embed = { $type: 'app.bsky.embed.external', external: { uri: url, title: url, description: '' } };
-      try {
-        // Try to fetch page title for preview (best-effort, CORS may block)
-        const resp = await fetch(url, { method: 'GET', mode: 'cors' });
-        const html = await resp.text();
-        const title = (html.match(/<title>([^<]+)<\/title>/i) || [])[1];
-        if (title) record.embed.external.title = title.trim();
-      } catch {}
+      let title = url;
+      try { title = new URL(url).host; } catch {}
+      record.embed = { $type: 'app.bsky.embed.external', external: { uri: url, title, description: '' } };
     }
   }
 
@@ -775,6 +770,43 @@ function initUI() {
     updateImageList(e.target.files || []);
   });
 
+  // Thread tools
+  const threadItems = [];
+  const threadList = document.getElementById('thread-list');
+  function renderThread() {
+    threadList.innerHTML = '';
+    threadItems.forEach((text, idx) => {
+      const div = document.createElement('div');
+      div.className = 'thread-item';
+      div.innerHTML = `
+        <textarea data-idx="${idx}" rows="3" class="full" placeholder="Reply text">${text}</textarea>
+        <div class="controls">
+          <button type="button" data-act="up" data-idx="${idx}" class="secondary">↑</button>
+          <button type="button" data-act="down" data-idx="${idx}" class="secondary">↓</button>
+          <button type="button" data-act="remove" data-idx="${idx}" class="secondary">Remove</button>
+        </div>
+      `;
+      threadList.appendChild(div);
+    });
+  }
+  document.getElementById('btn-add-reply').addEventListener('click', () => {
+    threadItems.push('');
+    renderThread();
+  });
+  threadList.addEventListener('click', (e) => {
+    const t = e.target.closest('button'); if (!t) return;
+    const i = Number(t.dataset.idx);
+    const act = t.dataset.act;
+    if (act === 'remove') { threadItems.splice(i,1); renderThread(); return; }
+    if (act === 'up' && i>0) { const tmp = threadItems[i-1]; threadItems[i-1]=threadItems[i]; threadItems[i]=tmp; renderThread(); return; }
+    if (act === 'down' && i<threadItems.length-1) { const tmp = threadItems[i+1]; threadItems[i+1]=threadItems[i]; threadItems[i]=tmp; renderThread(); return; }
+  });
+  threadList.addEventListener('input', (e) => {
+    const ta = e.target.closest('textarea'); if (!ta) return;
+    const i = Number(ta.dataset.idx);
+    threadItems[i] = ta.value;
+  });
+
   // Logout
   $('#btn-logout').addEventListener('click', () => {
     session.clear();
@@ -803,8 +835,6 @@ function initUI() {
   $('#form-compose').addEventListener('submit', async (e) => {
     e.preventDefault();
     let text = $('#post-text').value.trim();
-    // Paragraph-chunk threads: split by empty lines if user wrote multiple paragraphs beyond byte limit
-    const paragraphs = text.split(/\n{2,}/).map(s => s.trim()).filter(Boolean);
     const files = Array.from($('#image-input').files || []).slice(0, 4);
 
     const reply = {
@@ -823,7 +853,7 @@ function initUI() {
       const processedFiles = files; // no compression controls in minimal mode
       const alts = collectAlts(processedFiles.length);
       let res; let lastUri;
-      const chunks = paragraphs.length ? paragraphs : [text];
+      const chunks = [text, ...threadItems.map(t=>t.trim()).filter(Boolean)];
       for (let idx = 0; idx < chunks.length; idx++) {
         const part = chunks[idx];
         const partBytes = textEncoder.encode(part).length;

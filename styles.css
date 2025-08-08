@@ -32,6 +32,9 @@ small,.small{font-size:12px}
 .image-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;margin-top:10px}
 .image-item{border:1px dashed var(--border);border-radius:12px;padding:8px}
 .image-item img{width:100%;height:120px;object-fit:cover;border-radius:8px}
+.thread-list{display:flex;flex-direction:column;gap:10px;margin-top:10px}
+.thread-item{border:1px solid var(--border);border-radius:12px;padding:8px;background:#0f1216}
+.thread-item .controls{display:flex;gap:6px}
 .footer{border-top:1px solid var(--border);padding:16px 0;margin-top:40px;color:var(--muted)}
 fieldset{border:1px solid var(--border);border-radius:10px}
 legend{color:var(--muted)}
