@@ -154,21 +154,41 @@ async function apiFetch(path, { method = 'GET', headers = {}, body } = {}) {
   const { pds, accessJwt, authType } = session.state;
   if (!pds) throw new Error('No PDS configured');
   const url = `${ensureTrailing(pds)}xrpc/${path}`;
-  const h = new Headers(headers);
-  if (accessJwt) {
-    // For app password we use Bearer; for OAuth we likely need DPoP Authorization
-    if (authType === 'oauth') {
-      const tokenType = 'DPoP';
-      h.set('Authorization', `${tokenType} ${accessJwt}`);
-      const proof = await makeDpopProof(url, method);
-      h.set('DPoP', proof);
-    } else {
-      h.set('Authorization', `Bearer ${accessJwt}`);
+  async function doFetch(withNonce) {
+    const h = new Headers(headers);
+    if (accessJwt) {
+      if (authType === 'oauth') {
+        h.set('Authorization', `DPoP ${accessJwt}`);
+        const nonce = withNonce ? session.state.oauth?.nonce : undefined;
+        const proof = await makeDpopProof(url, method, nonce);
+        h.set('DPoP', proof);
+      } else {
+        h.set('Authorization', `Bearer ${accessJwt}`);
+      }
+    }
+    return fetch(url, { method, headers: h, body });
+  }
+
+  let res = await doFetch(true);
+  if (!res.ok && authType === 'oauth' && (res.status === 400 || res.status === 401)) {
+    // Try nonce challenge flow
+    const nonceHeader = res.headers.get('DPoP-Nonce') || res.headers.get('dpop-nonce');
+    const www = res.headers.get('WWW-Authenticate') || res.headers.get('www-authenticate');
+    const txt = await getResponseTextSafe(res);
+    let nonce = nonceHeader || parseDpopNonceFromAuthenticate(www);
+    if ((/use_dpop_nonce/i.test(txt) || /use_dpop_nonce/i.test(www || '')) && nonce) {
+      session.state.oauth = { ...(session.state.oauth || {}), nonce };
+      session.save();
+      res = await doFetch(true);
+    } else if (res.status === 401) {
+      // Try token refresh once
+      const refreshed = await maybeRefreshTokens();
+      if (refreshed) res = await doFetch(true);
     }
   }
-  const res = await fetch(url, { method, headers: h, body });
+
   if (!res.ok) {
-    const text = await res.text().catch(() => '');
+    const text = await getResponseTextSafe(res);
     throw new Error(`API ${method} ${path} failed: ${res.status} ${text}`);
   }
   const ctype = res.headers.get('content-type') || '';
