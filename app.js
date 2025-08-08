@@ -675,12 +675,22 @@ function updateSessionUI() {
     $('#session-identity').textContent = `${s.handle || s.did}`;
     $('#session-did').textContent = s.did || '';
     try { $('#pds-host').textContent = new URL(s.pds).host; } catch { $('#pds-host').textContent = s.pds || '—'; }
-    // Load avatar
-    try {
-      const profile = await apiFetch('app.bsky.actor.getProfile?'.replace('?', ''), { method: 'GET', headers: {}, body: undefined });
-    } catch {}
+    // Load avatar (fire and forget)
+    loadAvatar(s.did || s.handle);
     scheduleTokenRefresh();
   }
+}
+
+async function loadAvatar(actor) {
+  try {
+    if (!actor) return;
+    const url = `https://public.api.bsky.app/xrpc/app.bsky.actor.getProfile?actor=${encodeURIComponent(actor)}`;
+    const res = await fetch(url);
+    if (!res.ok) return;
+    const data = await res.json();
+    const img = document.getElementById('avatar');
+    if (data?.avatar && img) { img.src = data.avatar; img.hidden = false; }
+  } catch {}
 }
 
 function initInstallPrompt() {
@@ -699,6 +709,20 @@ function countBytesAndUpdate() {
   const bytes = textEncoder.encode(text).length;
   $('#byte-count').textContent = String(bytes);
   if (bytes > 300) $('#byte-count').style.color = 'var(--danger)'; else $('#byte-count').style.color = 'var(--muted)';
+  // Lightweight link preview toggle when no images selected
+  try {
+    const url = firstUrl(text);
+    const files = Array.from($('#image-input').files || []);
+    const preview = document.getElementById('link-preview');
+    if (preview) {
+      if (url && files.length === 0) {
+        preview.hidden = false;
+        preview.innerHTML = `<div><strong>Link preview</strong><div class="small">${url}</div></div>`;
+      } else {
+        preview.hidden = true; preview.innerHTML = '';
+      }
+    }
+  } catch {}
 }
 
 function updateImageList(files) {
