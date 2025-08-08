@@ -1,14 +1,14 @@
 {
   "client_id": "https://bsky-low-data.pages.dev/client-metadata.json",
-  "client_name": "Bluesky Low Data",
+  "client_name": "Minimal Bluesky Client",
   "client_uri": "https://bsky-low-data.pages.dev",
   "redirect_uris": [
     "https://bsky-low-data.pages.dev/oauth-callback.html"
   ],
   "scope": "atproto",
-  "grant_types": ["authorization_code"],
+  "grant_types": ["authorization_code", "refresh_token"],
   "response_types": ["code"],
   "token_endpoint_auth_method": "none",
   "application_type": "web",
   "dpop_bound_access_tokens": true
-}
+} 

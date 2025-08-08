@@ -260,7 +260,7 @@ async function loginWithAppPassword(identifier, password) {
 }
 
 // ------------------------
-// OAuth (Experimental): PKCE + PAR + DPoP
+// OAuth (atproto spec): PKCE + PAR + DPoP with resource + nonce
 // ------------------------
 async function getOAuthMetadata(pdsOrigin) {
   const url = new URL('/.well-known/oauth-authorization-server', pdsOrigin).toString();
@@ -283,8 +283,7 @@ async function startOAuth(handle, redirectUri) {
   const codeVerifier = randomString(64);
   const codeChallenge = b64.urlencode(await sha256(codeVerifier));
 
-  // For Bluesky OAuth, client_id should be a resolvable metadata URL.
-  // Always use the stable Pages metadata URL.
+  // Client ID per atproto OAUTH.md: metadata URL as client_id
   const clientId = 'https://bsky-low-data.pages.dev/client-metadata.json';
 
   // Push the authorization request (PAR)
