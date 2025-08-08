@@ -169,7 +169,16 @@ async function apiFetch(path, { method = 'GET', headers = {}, body } = {}) {
         h.set('Authorization', `Bearer ${accessJwt}`);
       }
     }
-    return fetch(url, { method, headers: h, body });
+    const response = await fetch(url, { method, headers: h, body });
+    // If server rotates DPoP nonce, persist it for next call
+    try {
+      const nextNonce = response.headers.get('DPoP-Nonce') || response.headers.get('dpop-nonce');
+      if (nextNonce && authType === 'oauth') {
+        session.state.oauth = { ...(session.state.oauth || {}), nonce: nextNonce };
+        session.save();
+      }
+    } catch {}
+    return response;
   }
 
   let res = await doFetch(true);
