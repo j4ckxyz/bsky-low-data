@@ -163,7 +163,7 @@ async function apiFetch(path, { method = 'GET', headers = {}, body } = {}) {
       if (authType === 'oauth') {
         h.set('Authorization', `DPoP ${accessJwt}`);
         const nonce = withNonce ? session.state.oauth?.nonce : undefined;
-        const proof = await makeDpopProof(url, method, nonce);
+        const proof = await makeDpopProof(url, method, nonce, accessJwt);
         h.set('DPoP', proof);
       } else {
         h.set('Authorization', `Bearer ${accessJwt}`);
@@ -422,11 +422,16 @@ async function getDpopThumbprint() {
   const digest = await sha256(textEncoder.encode(json));
   return { jkt: b64.urlencode(digest) };
 }
-async function makeDpopProof(htu, htm = 'GET', nonce) {
+async function makeDpopProof(htu, htm = 'GET', nonce, accessTokenForAth) {
   const { publicJwk, privateKey } = await loadDpopKey();
   const header = { typ: 'dpop+jwt', alg: 'ES256', jwk: publicJwk };
   const payload = { htu, htm, iat: Math.floor(Date.now() / 1000), jti: crypto.randomUUID?.() || randomString(16) };
   if (nonce) payload.nonce = nonce;
+  // Include 'ath' (base64url sha256 of access token) when presenting a DPoP-bound token to resource servers
+  if (accessTokenForAth) {
+    const athBytes = await sha256(accessTokenForAth);
+    payload.ath = b64.urlencode(athBytes);
+  }
   const encHeader = b64.urlencode(textEncoder.encode(JSON.stringify(header)));
   const encPayload = b64.urlencode(textEncoder.encode(JSON.stringify(payload)));
   const toSign = `${encHeader}.${encPayload}`;
