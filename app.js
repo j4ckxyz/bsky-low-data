@@ -871,11 +871,9 @@ function initUI() {
 // ------------------------
 (function boot() {
   session.load();
-  if (document.getElementById('oauth-redirect')) {
-    // main page
-    updateSessionUI();
-    initUI();
-  }
+  // Initialize UI on all pages with the composer/login
+  updateSessionUI();
+  initUI();
 })();
 
 export { handleOAuthCallback };
