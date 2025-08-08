@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bluesky OAuth – Callback</title>
+    <base href="./" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <section class="card">
+        <h2>Finishing sign-in…</h2>
+        <p class="muted" id="status">Exchanging authorization code for tokens.</p>
+      </section>
+    </main>
+    <script type="module">
+      import { handleOAuthCallback } from './app.js';
+      (async () => {
+        const el = document.getElementById('status');
+        try {
+          await handleOAuthCallback();
+          el.textContent = 'Signed in. You can close this tab.';
+          setTimeout(() => { window.location.href = './'; }, 1200);
+        } catch (e) {
+          console.error(e);
+          el.textContent = 'Sign-in failed: ' + (e?.message || 'Unknown error');
+        }
+      })();
+    </script>
+  </body>
+</html>
