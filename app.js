@@ -84,6 +84,9 @@ const storage = {
   del(key) { localStorage.removeItem(key); }
 };
 
+// Background refresh scheduler for OAuth sessions
+let refreshTimer;
+
 // ------------------------
 // AT Protocol helpers
 // ------------------------
@@ -821,9 +824,6 @@ function initUI() {
 })();
 
 export { handleOAuthCallback };
-
-// Background refresh scheduler for OAuth sessions
-let refreshTimer;
 function scheduleTokenRefresh() {
   clearTimeout(refreshTimer);
   if (session.state.authType !== 'oauth') return;
