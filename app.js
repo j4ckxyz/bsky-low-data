@@ -293,6 +293,8 @@ async function startOAuth(handle, redirectUri) {
     response_type: 'code',
     redirect_uri: redirectUri,
     scope: 'atproto',
+    // Indicate the target resource server (your PDS) per RFC 8707
+    resource: pds,
     code_challenge: codeChallenge,
     code_challenge_method: 'S256',
     // Provide login hint to streamline account selection
