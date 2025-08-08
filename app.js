@@ -171,19 +171,24 @@ async function apiFetch(path, { method = 'GET', headers = {}, body } = {}) {
 
   let res = await doFetch(true);
   if (!res.ok && authType === 'oauth' && (res.status === 400 || res.status === 401)) {
-    // Try nonce challenge flow
-    const nonceHeader = res.headers.get('DPoP-Nonce') || res.headers.get('dpop-nonce');
-    const www = res.headers.get('WWW-Authenticate') || res.headers.get('www-authenticate');
-    const txt = await getResponseTextSafe(res);
-    let nonce = nonceHeader || parseDpopNonceFromAuthenticate(www);
-    if ((/use_dpop_nonce/i.test(txt) || /use_dpop_nonce/i.test(www || '')) && nonce) {
-      session.state.oauth = { ...(session.state.oauth || {}), nonce };
-      session.save();
-      res = await doFetch(true);
-    } else if (res.status === 401) {
-      // Try token refresh once
-      const refreshed = await maybeRefreshTokens();
-      if (refreshed) res = await doFetch(true);
+    // Handle DPoP nonce challenges with up to two retries
+    for (let attempt = 0; attempt < 2 && (!res.ok && (res.status === 400 || res.status === 401)); attempt++) {
+      const nonceHeader = res.headers.get('DPoP-Nonce') || res.headers.get('dpop-nonce');
+      const www = res.headers.get('WWW-Authenticate') || res.headers.get('www-authenticate');
+      const txt = await getResponseTextSafe(res);
+      const indicated = /use_dpop_nonce/i.test(txt) || /use_dpop_nonce/i.test(www || '');
+      const parsedNonce = nonceHeader || parseDpopNonceFromAuthenticate(www);
+      if (indicated && parsedNonce) {
+        session.state.oauth = { ...(session.state.oauth || {}), nonce: parsedNonce };
+        session.save();
+        res = await doFetch(true);
+        continue;
+      }
+      if (res.status === 401) {
+        const refreshed = await maybeRefreshTokens();
+        if (refreshed) { res = await doFetch(true); continue; }
+      }
+      break;
     }
   }
 
