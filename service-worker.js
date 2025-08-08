@@ -1,9 +1,8 @@
-const CACHE = 'bsky-low-data-v2';
+const CACHE = 'bsky-low-data-v3';
 const ASSETS = [
   './',
   './index.html',
   './styles.css',
-  './app.js',
   './manifest.webmanifest'
 ];
 
@@ -17,6 +16,7 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
   );
+  self.clients.claim();
 });
 
 self.addEventListener('fetch', (event) => {
@@ -27,6 +27,12 @@ self.addEventListener('fetch', (event) => {
   // Only cache same-origin requests. For cross-origin (e.g., PDS OAuth/APIs), go network-only.
   if (url.origin !== self.location.origin) {
     event.respondWith(fetch(req));
+    return;
+  }
+
+  // Always bypass cache for app.js to ensure latest OAuth logic
+  if (url.pathname.endsWith('/app.js')) {
+    event.respondWith(fetch(new Request(req, { cache: 'no-store' })));
     return;
   }
 
