@@ -48,8 +48,13 @@ function coerceLocalRedirect(urlString) {
 
 function computeDefaultRedirect() {
   try {
-    // Prefer a clean absolute callback on custom domains like bsky.j4ck.xyz
-    if (location.hostname.endsWith('j4ck.xyz')) {
+    const host = location.hostname;
+    // If running on localhost, GitHub Pages, or any preview, prefer the stable Pages production URL
+    if (host === 'localhost' || host === '127.0.0.1' || host.endsWith('github.io') || host.endsWith('pages.dev')) {
+      return 'https://bsky-low-data.pages.dev/oauth-callback.html';
+    }
+    // On a custom domain (e.g., bsky.j4ck.xyz), stick to current host
+    if (host.endsWith('j4ck.xyz')) {
       return `https://${location.host}/oauth-callback.html`;
     }
   } catch {}
