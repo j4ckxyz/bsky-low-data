@@ -227,12 +227,11 @@ async function startOAuth(handle, redirectUri) {
   const codeVerifier = randomString(64);
   const codeChallenge = b64.urlencode(await sha256(codeVerifier));
 
-  // For Bluesky OAuth, public client uses site origin as client_id. If running on Pages, prefer the Pages origin explicitly.
-  let clientIdOrigin = new URL(redirectUri).origin;
-  if (clientIdOrigin.endsWith('pages.dev')) {
-    clientIdOrigin = 'https://bsky-low-data.pages.dev';
+  // For Bluesky OAuth, client_id should be a resolvable metadata URL. Use client-metadata.json on Pages.
+  let clientId = new URL(redirectUri).origin;
+  if (clientId.endsWith('pages.dev')) {
+    clientId = 'https://bsky-low-data.pages.dev/client-metadata.json';
   }
-  const clientId = clientIdOrigin;
 
   // Push the authorization request (PAR)
   const parParams = new URLSearchParams({
