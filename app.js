@@ -139,6 +139,7 @@ const session = {
       metadata: null,
       dpopKeyId: null,
       nonce: null,
+      nonceMap: {},
     }
   },
   load() {
@@ -162,7 +163,9 @@ async function apiFetch(path, { method = 'GET', headers = {}, body } = {}) {
     if (accessJwt) {
       if (authType === 'oauth') {
         h.set('Authorization', `DPoP ${accessJwt}`);
-        const nonce = withNonce ? session.state.oauth?.nonce : undefined;
+        // Per-endpoint nonce (some servers issue endpoint-specific nonces)
+        const endpointKey = url;
+        const nonce = withNonce ? (session.state.oauth?.nonceMap?.[endpointKey] || session.state.oauth?.nonce) : undefined;
         const proof = await makeDpopProof(url, method, nonce, accessJwt);
         h.set('DPoP', proof);
       } else {
@@ -174,7 +177,10 @@ async function apiFetch(path, { method = 'GET', headers = {}, body } = {}) {
     try {
       const nextNonce = response.headers.get('DPoP-Nonce') || response.headers.get('dpop-nonce');
       if (nextNonce && authType === 'oauth') {
-        session.state.oauth = { ...(session.state.oauth || {}), nonce: nextNonce };
+        const endpointKey = url;
+        const nextMap = { ...(session.state.oauth?.nonceMap || {}) };
+        nextMap[endpointKey] = nextNonce;
+        session.state.oauth = { ...(session.state.oauth || {}), nonce: nextNonce, nonceMap: nextMap };
         session.save();
       }
     } catch {}
